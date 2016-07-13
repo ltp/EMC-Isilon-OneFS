@@ -38,6 +38,9 @@ sub new {
 					SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_NONE 
 				} 
 	);
+
+	$self->{ __ua }->cookie_jar( {} );
+
 	$self->{ __jp } = JSON->new();
 
         return $self
@@ -72,7 +75,6 @@ sub __create_session {
 	};
 
 	my $enc = $self->{ __jp }->encode( $json );
-	print "JSON: $enc\n\n";
 
 	my $res = $self->{ __ua }->post( 
 		"$self->{ proto }://$self->{ hostname }:$self->{ port }/session/1/session",
@@ -81,19 +83,58 @@ sub __create_session {
 	);
 
 	if ( $res->is_success ) {
-		print "Request was successful\n";
-		print $res->content();
-		#$self->{ __session }->{ $services } = 
+		my $json = $self->{ __jp }->decode( $res->content );
+
+		$self->{ __cs }->{ session_ctime } = localtime;
+		$self->{ __cs }->{ services } = $json->{ services };
+		$self->{ __cs }->{ timeout_absolute } = $json->{ timeout_absolute };
+		$self->{ __cs }->{ timeout_inactive } = $json->{ timeout_inactive };
+
+		return $self
 	}
 	else {
-		print $res->content();
-		print "Request was NOT successful\n";
+		$self->{ __error } = $res->content;
+		return 0
+	}
+}
+
+sub __delete_session {
+	my $self = shift;
+
+	if ( $self->{ __cs }->{ session_ctime }
+		&& ( $self->{ __cs }->{ session_ctime } + $self->{ __cs }->{ timeout_absolute } )
+			< localtime 
+	) {
+		$self->{ __ua }->delete( 
+			"$self->{ proto }://$self->{ hostname }:$self->{ port }/session/1/session"
+		)
+	}
+}
+
+sub __get {
+	my ( $self, $req ) = @_;
+
+	
+	my $r = $self->{ __ua }->get( 
+		"$self->{ proto }://$self->{ hostname }:$self->{ port }$req"
+	);
+
+	my $j = $self->{ __jp }->decode( $r->content );
+
+	if ( $r->is_success ) {
+		return $j
+	}
+	else {
+		$self->{ __error } = $j;
 		return 0
 	}
 
-	print $res->content . "\n\n";
+}
 
-	return $self
+sub get_resource_uris {
+	my $self = shift;
+
+	return $self->__get( '/platform?describe&list' )->{ directory }
 }
 
 1;
@@ -112,6 +153,45 @@ EMC::Isilon::OneFS - Perl bindings for the EMC Isilon OneFS API
     ...
 
 =head2 METHODS
+
+=head3 new( %ARGS )
+
+Constructor; creates a new EMC::Isilon::OneFS object.  The constructor accepts
+three mandatory parameters and two optional parameters.
+
+=over 4
+
+=item * username
+
+Mandatory - the username with which to connect to the API.
+
+=item * password
+
+Mandatory - the password with which to connect to the API.
+
+=item * hostname
+
+Mandatory - the hostname of the device to connect to.
+
+=item * proto
+
+Optional - the protocol to use when connecting to the API, this should be one 
+of 'http' or 'https'.  If not supplied, this parameter defaults to 'https'.
+
+=item * port
+
+Optional - the port to use when connecting to the API.  If not supplied, this 
+parameter defaults to '8080'.
+
+=back
+
+=head3 session ( [platform|namespace] )
+
+Establishes a session to the OneFS API.
+
+=head3 get_resource_uris ()
+
+Returns an array containing all resource URIs defined on the target platform.
 
 =head2 AUTHOR
 
