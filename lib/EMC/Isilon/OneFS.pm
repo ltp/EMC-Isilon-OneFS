@@ -6,6 +6,7 @@ use warnings;
 use LWP;
 use JSON;
 use IO::Socket::SSL;
+use EMC::Isilon::OneFS::Protocols;
 use Data::Dumper;
 
 our $VERSION = 0.1;
@@ -116,7 +117,8 @@ sub __get {
 
 	
 	my $r = $self->{ __ua }->get( 
-		"$self->{ proto }://$self->{ hostname }:$self->{ port }$req"
+		"$self->{ proto }://$self->{ hostname }:$self->{ port }$req",
+		accept => 'application/json',
 	);
 
 	my $j = $self->{ __jp }->decode( $r->content );
@@ -135,6 +137,18 @@ sub get_resource_uris {
 	my $self = shift;
 
 	return $self->__get( '/platform?describe&list' )->{ directory }
+}
+
+sub protocols {
+	my $self = shift;
+
+	return EMC::Isilon::OneFS::Protocols->new( $self )
+}
+
+sub error {
+	my $self = shift;
+	
+	die "ERROR: $self->{ error }\n"
 }
 
 1;
